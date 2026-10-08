@@ -69,8 +69,7 @@ func (c *TextSearchConfig) DependsOn(change, other schema.Change) bool {
 	return false
 }
 
-// DependencyOf orders configuration creation and modification before tables using it in
-// defaults, generated columns, or expression indexes.
+// DependencyOf orders configuration changes before tables that may reference it.
 func (c *TextSearchConfig) DependencyOf(change, other schema.Change) bool {
 	switch change.(type) {
 	case *schema.AddObject, *schema.ModifyObject:
@@ -179,8 +178,7 @@ func (i *inspect) inspectTextSearchConfigs(ctx context.Context, r *schema.Realm)
 	return rows.Err()
 }
 
-// Extension-owned configurations, like other extension members, are managed by
-// the extension. System configurations are excluded by the selected schemas.
+// Exclude extension members; they are managed by their extension.
 const textSearchConfigsQuery = `SELECT c.oid, n.nspname, c.cfgname,
  quote_ident(pn.nspname) || '.' || quote_ident(p.prsname),
  obj_description(c.oid, 'pg_ts_config'), t.alias,
@@ -197,7 +195,7 @@ WHERE n.nspname IN (%s)
  AND NOT EXISTS (SELECT 1 FROM pg_depend WHERE classid = 'pg_ts_config'::regclass AND objid = c.oid AND deptype = 'e')
 ORDER BY n.nspname, c.cfgname, t.alias, m.mapseqno`
 
-// Accept SQL identifier syntax only. Reference strings are never SQL fragments.
+// Parser and dictionary references must be SQL identifiers.
 var textSearchName = regexp.MustCompile(`^(?:[\pL_][\pL\pN_$]*|"(?:[^"]|"")+")(?:\.(?:[\pL_][\pL\pN_$]*|"(?:[^"]|"")+"))?$`)
 
 func textSearchRef(name string) (string, error) {
@@ -330,8 +328,7 @@ func textSearchConfigDiff(from, to *schema.Schema) ([]schema.Change, error) {
 }
 
 func (s *state) textSearchIdent(c *TextSearchConfig) string {
-	// Builder.SchemaResource honors the plan's schema qualifier. Escape quotes
-	// here because Builder.Ident expects an already escaped identifier.
+	// Builder.Ident expects quotes to be escaped by the caller.
 	var ns *schema.Schema
 	if c.Schema != nil {
 		ns = schema.New(strings.ReplaceAll(c.Schema.Name, `"`, `""`))
@@ -424,8 +421,7 @@ func (s *state) modifyTextSearchConfig(change *schema.ModifyObject, from, to *Te
 	}
 	p1, _ := textSearchRef(from.Parser)
 	p2, _ := textSearchRef(to.Parser)
-	// PostgreSQL has no ALTER PARSER form. Recreating it here would invalidate
-	// dependencies such as generated columns and indexes, so do not silently drop it.
+	// PostgreSQL cannot alter the parser without recreating the configuration.
 	if p1 != p2 {
 		return fmt.Errorf("postgres: changing the parser of text search configuration %q requires dropping and recreating it", from.Name)
 	}

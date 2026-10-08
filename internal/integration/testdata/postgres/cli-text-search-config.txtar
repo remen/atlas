@@ -1,8 +1,7 @@
 # Generated columns require PostgreSQL 12 or later.
 ! only postgres10|postgres11
 
-# unaccent is supplied by a baseline migration; extensions are not diffed by
-# the community build. The desired SQL includes it for dev-database evaluation.
+# Install unaccent in both the migration baseline and desired SQL.
 atlas migrate hash
 atlas migrate diff --dev-url DEV_URL --to file://schema.sql textsearch
 atlas migrate apply --url URL
@@ -10,7 +9,6 @@ atlas migrate diff --dev-url DEV_URL --to file://schema.sql
 stdout 'The migration directory is synced with the desired state, no changes to be made'
 
 atlas schema inspect --url URL > inspected.hcl
-# HCL inspection and normalization must preserve the configuration and mappings.
 synced inspected.hcl
 
 -- migrations/1_baseline.sql --
