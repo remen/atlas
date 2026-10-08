@@ -1,0 +1,24 @@
+# Generated columns require PostgreSQL 12 or later.
+! only postgres10|postgres11
+
+# unaccent is supplied by a baseline migration; extensions are not diffed by
+# the community build. The desired SQL includes it for dev-database evaluation.
+atlas migrate hash
+atlas migrate diff --dev-url DEV_URL --to file://schema.sql textsearch
+atlas migrate apply --url URL
+atlas migrate diff --dev-url DEV_URL --to file://schema.sql
+stdout 'The migration directory is synced with the desired state, no changes to be made'
+
+atlas schema inspect --url URL > inspected.hcl
+# HCL inspection and normalization must preserve the configuration and mappings.
+synced inspected.hcl
+
+-- migrations/1_baseline.sql --
+CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public;
+
+-- schema.sql --
+CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public;
+CREATE TEXT SEARCH CONFIGURATION usimple (COPY = pg_catalog.simple);
+ALTER TEXT SEARCH CONFIGURATION usimple ALTER MAPPING FOR hword, hword_part, word WITH public.unaccent, pg_catalog.simple;
+CREATE TABLE cars (name text, ts tsvector GENERATED ALWAYS AS (to_tsvector('usimple'::regconfig, name)) STORED);
+CREATE INDEX cars_ts ON cars USING gin(ts);

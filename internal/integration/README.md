@@ -56,3 +56,13 @@ If you want to run all tests for one specific dialect, like only TiDB 5, you can
 ```shell
 go test -run='TiDB' -dialect='tidb5' ./...
 ```
+The text search configuration test can also use a dedicated PostgreSQL server,
+without starting the Compose services:
+
+```shell
+ATLAS_POSTGRES_TEST_URL='postgres://postgres:pass@localhost:15432/test?sslmode=disable' \
+  go test -run '^TestPostgres_TextSearchConfig$' -count=1 .
+```
+
+Use a disposable test database: the test creates and removes its own schema and
+installs the `unaccent` extension if it is missing.

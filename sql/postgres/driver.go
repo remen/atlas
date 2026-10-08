@@ -132,6 +132,9 @@ func (d *Driver) dev() *sqlx.DevDriver {
 	return &sqlx.DevDriver{
 		Driver: d,
 		PatchObject: func(s *schema.Schema, o schema.Object) {
+			if c, ok := o.(*TextSearchConfig); ok {
+				c.Schema = s
+			}
 			if e, ok := o.(*schema.EnumType); ok {
 				e.Schema = s
 			}
@@ -622,9 +625,10 @@ func (s *state) alterTableAttr(*sqlx.Builder, *schema.ModifyAttr) {
 	// unimplemented.
 }
 
-
 func (s *state) addObject(add *schema.AddObject) error {
 	switch o := add.O.(type) {
+	case *TextSearchConfig:
+		return s.addTextSearchConfig(add, o)
 	case *schema.EnumType:
 		create, drop := s.createDropEnum(o)
 		s.append(&migrate.Change{
@@ -641,6 +645,8 @@ func (s *state) addObject(add *schema.AddObject) error {
 
 func (s *state) dropObject(drop *schema.DropObject) error {
 	switch o := drop.O.(type) {
+	case *TextSearchConfig:
+		return s.dropTextSearchConfig(drop, o)
 	case *schema.EnumType:
 		create, dropE := s.createDropEnum(o)
 		s.append(&migrate.Change{
@@ -656,12 +662,18 @@ func (s *state) dropObject(drop *schema.DropObject) error {
 }
 
 func (s *state) modifyObject(modify *schema.ModifyObject) error {
+	if c, ok := modify.From.(*TextSearchConfig); ok {
+		to, ok := modify.To.(*TextSearchConfig)
+		if !ok {
+			return fmt.Errorf("postgres: cannot modify text search configuration to %T", modify.To)
+		}
+		return s.modifyTextSearchConfig(modify, c, to)
+	}
 	if _, ok := modify.From.(*schema.EnumType); ok {
 		return s.alterEnum(modify)
 	}
 	return nil // unimplemented.
 }
-
 
 // RealmObjectDiff returns a changeset for migrating realm (database) objects
 // from one state to the other. For example, adding extensions or users.
@@ -672,7 +684,10 @@ func (*diff) RealmObjectDiff(_, _ *schema.Realm) ([]schema.Change, error) {
 // SchemaObjectDiff returns a changeset for migrating schema objects from
 // one state to the other.
 func (*diff) SchemaObjectDiff(from, to *schema.Schema, _ *schema.DiffOptions) ([]schema.Change, error) {
-	var changes []schema.Change
+	changes, err := textSearchConfigDiff(from, to)
+	if err != nil {
+		return nil, err
+	}
 	// Drop or modify enums.
 	for _, o1 := range from.Objects {
 		e1, ok := o1.(*schema.EnumType)
@@ -756,6 +771,12 @@ func normalizeRealm(*schema.Realm) error {
 // objectSpec converts from a concrete schema objects into specs.
 func objectSpec(d *doc, spec *specutil.SchemaSpec, s *schema.Schema) error {
 	for _, o := range s.Objects {
+		if c, ok := o.(*TextSearchConfig); ok {
+			if err := validateTextSearchConfig(c); err != nil {
+				return err
+			}
+			d.TextSearchConfigs = append(d.TextSearchConfigs, textSearchConfigSpec(c, spec.Schema.Name))
+		}
 		if e, ok := o.(*schema.EnumType); ok {
 			d.Enums = append(d.Enums, &enum{
 				Name:   e.T,
