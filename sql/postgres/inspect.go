@@ -47,6 +47,11 @@ func (i *inspect) InspectRealm(ctx context.Context, opts *schema.InspectRealmOpt
 		mode = sqlx.ModeInspectRealm(opts)
 	)
 	if len(schemas) > 0 {
+		if mode.Is(schema.InspectObjects) && !i.crdb {
+			if err := i.inspectTextSearchConfigs(ctx, r); err != nil {
+				return nil, err
+			}
+		}
 		if mode.Is(schema.InspectTypes) {
 			if err := i.inspectEnums(ctx, r); err != nil {
 				return nil, err
@@ -117,6 +122,11 @@ func (i *inspect) InspectSchema(ctx context.Context, name string, opts *schema.I
 		r    = schema.NewRealm(schemas...)
 		mode = sqlx.ModeInspectSchema(opts)
 	)
+	if mode.Is(schema.InspectObjects) && !i.crdb {
+		if err := i.inspectTextSearchConfigs(ctx, r); err != nil {
+			return nil, err
+		}
+	}
 	if mode.Is(schema.InspectTypes) {
 		if err := i.inspectEnums(ctx, r); err != nil {
 			return nil, err

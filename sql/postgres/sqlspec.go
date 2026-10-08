@@ -23,16 +23,17 @@ import (
 
 type (
 	doc struct {
-		Tables        []*sqlspec.Table    `spec:"table"`
-		Enums         []*enum             `spec:"enum"`
-		Domains       []*domain           `spec:"domain"`
-		Composites    []*composite        `spec:"composite"`
-		Sequences     []*sqlspec.Sequence `spec:"sequence"`
-		Aggregates    []*aggregate        `spec:"aggregate"`
-		Policies      []*policy           `spec:"policy"`
-		EventTriggers []*eventTrigger     `spec:"event_trigger"`
-		Extensions    []*extension        `spec:"extension"`
-		Schemas       []*sqlspec.Schema   `spec:"schema"`
+		TextSearchConfigs []*textSearchConfig `spec:"text_search_config"`
+		Tables            []*sqlspec.Table    `spec:"table"`
+		Enums             []*enum             `spec:"enum"`
+		Domains           []*domain           `spec:"domain"`
+		Composites        []*composite        `spec:"composite"`
+		Sequences         []*sqlspec.Sequence `spec:"sequence"`
+		Aggregates        []*aggregate        `spec:"aggregate"`
+		Policies          []*policy           `spec:"policy"`
+		EventTriggers     []*eventTrigger     `spec:"event_trigger"`
+		Extensions        []*extension        `spec:"extension"`
+		Schemas           []*sqlspec.Schema   `spec:"schema"`
 	}
 
 	// Enum holds a specification for an enum type.
@@ -122,6 +123,7 @@ type (
 
 // merge merges the doc d1 into d.
 func (d *doc) merge(d1 *doc) {
+	d.TextSearchConfigs = append(d.TextSearchConfigs, d1.TextSearchConfigs...)
 	d.Enums = append(d.Enums, d1.Enums...)
 	d.Tables = append(d.Tables, d1.Tables...)
 	d.Domains = append(d.Domains, d1.Domains...)
@@ -190,6 +192,7 @@ func (a *aggregate) SetQualifier(q string) { a.Qualifier = q }
 func (a *aggregate) SchemaRef() *schemahcl.Ref { return a.Schema }
 
 func init() {
+	schemahcl.Register("text_search_config", &textSearchConfig{})
 	schemahcl.Register("enum", &enum{})
 	schemahcl.Register("domain", &domain{})
 	schemahcl.Register("policy", &policy{})
@@ -219,6 +222,9 @@ func (c *Codec) EvalOptions(p *hclparse.Parser, v any, opts *schemahcl.EvalOptio
 		}
 		if err := specutil.Scan(v, d.ScanDoc(), scanFuncs); err != nil {
 			return fmt.Errorf("specutil: failed converting to *schema.Realm: %w", err)
+		}
+		if err := convertTextSearchConfigs(d.TextSearchConfigs, v); err != nil {
+			return err
 		}
 		if err := convertTypes(&d, v); err != nil {
 			return err
@@ -251,6 +257,9 @@ func (c *Codec) EvalOptions(p *hclparse.Parser, v any, opts *schemahcl.EvalOptio
 		}
 		r := &schema.Realm{}
 		if err := specutil.Scan(r, d.ScanDoc(), scanFuncs); err != nil {
+			return err
+		}
+		if err := convertTextSearchConfigs(d.TextSearchConfigs, r); err != nil {
 			return err
 		}
 		if err := convertTypes(&d, r); err != nil {
@@ -295,6 +304,9 @@ func (c *Codec) MarshalSpec(v any) ([]byte, error) {
 				return nil, fmt.Errorf("specutil: failed converting schema to spec: %w", err)
 			}
 			d.merge(d1)
+		}
+		if err := specutil.QualifyObjects(d.TextSearchConfigs); err != nil {
+			return nil, err
 		}
 		if err := specutil.QualifyObjects(d.Tables); err != nil {
 			return nil, err
